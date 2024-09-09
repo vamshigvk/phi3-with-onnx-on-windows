@@ -19,10 +19,14 @@ def main(args):
     # Set the max length to something sensible by default, unless it is specified by the user,
     # since otherwise it will be set to the entire context length
     if 'max_length' not in search_options:
-        search_options['max_length'] = 2048
+        #search_options['max_length'] = 2048
+        search_options['max_length'] = 16000
     
-    rules="you are a digital assistant"
-    chat_template = '<|user|>\n{input} {rules}<|end|>\n   <|assistant|>'
+    rules="you are a summarizer"
+    # chat_template = '<|user|>\n{input} {rules}<|end|>\n   <|assistant|>'  # test chat template
+    # chat_template = '<|user|>\n{input}<|end|>\n   <|assistant|>'  # default chat template
+    chat_template = '<|system|>\n{rules}<|end>\n<|user|>\n{input}<|end|>\n   <|assistant|>'
+
 
     # Keep asking for input prompts in a loop
     while True:
