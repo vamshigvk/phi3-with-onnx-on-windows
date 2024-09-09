@@ -1,1 +1,0 @@
-# phi3-with-onnx-on-windows
