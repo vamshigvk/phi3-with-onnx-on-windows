@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+onnxruntime
+huggingface_hub[cli]
+numpy
+onnxruntime-genai
+python-multipart
