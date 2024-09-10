@@ -19,7 +19,7 @@
     - `huggingface-cli download microsoft/Phi-3-mini-4k-instruct-onnx --include cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4/* --local-dir .`
 
 - microsoft/Phi-3-medium-4k-instruct-onnx-cpu
-    - https://huggingface.co/microsoft/Phi-3-medium-4k-instruct-onnx-cpu/tree/main/cpu-int4-rtn-block-32-acc-level-4] 
+    - https://huggingface.co/microsoft/Phi-3-medium-4k-instruct-onnx-cpu/tree/main/cpu-int4-rtn-block-32-acc-level-4
 
     - `huggingface-cli download microsoft/Phi-3-medium-4k-instruct-onnx-cpu --include cpu-int4-rtn-block-32-acc-level-4/* --local-dir .`
 
@@ -33,5 +33,8 @@
     `python -m uvicorn app:app --reload`
 
 ### run the model locally
-- `python phi3-qa.py -m models/phi-3-mini-4k-instruct-onnx-cpu -v -g -l 4000`
+- `python phi3-qa.py -m models/phi-3-mini-4k-instruct-onnx -v -g -l 4000`
 - `python phi3-qa.py -m models/phi-3-mini-128k-instruct-onnx -v -g -l 4000`
+
+### build an onnx model
+- `python -m onnxruntime_genai.models.builder -m models\Phi-3-mini-4k-instruct -o onnx-models -p int4 -e cpu --extra_options int4_block_size=32 --extra_options int4_accuracy_level=4`
