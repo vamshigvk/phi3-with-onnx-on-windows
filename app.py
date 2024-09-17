@@ -1,6 +1,6 @@
 import onnxruntime_genai as og
 import time
-from fastapi import FastAPI, Query, HTTPException, Form
+from fastapi import FastAPI, Query, Form, HTTPException
 from typing import List, Optional
 import uvicorn
 
@@ -17,13 +17,13 @@ async def load_model():
 
 @app.post("/generate/")
 def generate_tokens(
-    prompt: str = Form(..., description="Ask your query here", min_length=1), 
-    rules: str = Form(default="You are a digital assistant", description="Rules LLM should follow" ,min_length=1), 
-    max_length: Optional[int] = Query(None, description="Max number of tokens to generate including the prompt"),
-    min_length: Optional[int] = Query(None, description="Min number of tokens to generate including the prompt"),
-    top_p: Optional[float] = Query(None, description="Top p probability to sample with"),
-    top_k: Optional[int] = Query(None, description="Top k tokens to sample from"),
-    temperature: Optional[float] = Query(None, description="Temperature to sample with"),
+    prompt: str = Form(..., description="Input prompt to generate tokens from"),
+    rules: str = Form(default="You are a digital assistant", description="Rules for token generation", min_length=1),
+    max_length: Optional[int] = Query(1000, description="Max number of tokens to generate including the prompt"),
+    min_length: Optional[int] = Query(10, description="Min number of tokens to generate including the prompt"),
+    top_p: Optional[float] = Query(default=0.5, description="Top p probability to sample with"),
+    top_k: Optional[int] = Query(default=100, description="Top k tokens to sample from"),
+    temperature: Optional[float] = Query(default=0.5, description="Temperature to sample with"),
     repetition_penalty: Optional[float] = Query(None, description="Repetition penalty to sample with"),
     do_random_sampling: Optional[bool] = Query(False, description="Do random sampling"),
     batch_size_for_cuda_graph: Optional[int] = Query(1, description="Max batch size for CUDA graph"),
@@ -31,18 +31,12 @@ def generate_tokens(
 ):
     if verbose: print("Starting token generation process...")
 
-    # Validate chat template
-    # if chat_template:
-    #     if chat_template.count('{') != 1 or chat_template.count('}') != 1:
-    #         raise HTTPException(status_code=400, detail="Chat template must have exactly one pair of curly braces, e.g., '<|user|>\n{input} <|end|>\n<|assistant|>'")
+    # Apply the fixed chat template with rules and prompt
+    chat_template = f"<|system|>\n{rules}<|end>\n<|user|>\n{prompt}<|end|>\n<|assistant|>"
 
-    #     prompt[:] = [chat_template.format(input=text) for text in prompt]
-
-    chat_template = f'<|system|>\n{rules}<|end>\n<|user|>\n{prompt}<|end|>\n   <|assistant|>'
-
-    # Tokenize prompt
-    input_tokens = tokenizer.encode_batch(prompt)
-    if verbose: print(f'Prompt(s) encoded: {prompt}')
+    # Tokenize prompts
+    input_tokens = tokenizer.encode_batch([chat_template])
+    if verbose: print(f'Prompt(s) encoded: {chat_template}')
 
     # Create generator parameters
     params = og.GeneratorParams(model)
@@ -66,7 +60,7 @@ def generate_tokens(
     params.set_search_options(**search_options)
 
     # Handle batch size
-    params.try_graph_capture_with_max_batch_size(len(prompt))
+    params.try_graph_capture_with_max_batch_size(1)
     if batch_size_for_cuda_graph:
         params.try_graph_capture_with_max_batch_size(batch_size_for_cuda_graph)
 
@@ -80,19 +74,18 @@ def generate_tokens(
     run_time = time.time() - start_time
 
     # Decode and return output
-    generated_texts = [tokenizer.decode(output) for output in output_tokens]
+    generated_text = tokenizer.decode(output_tokens[0]).
 
     if verbose:
-        print(f"Generated texts: {generated_texts}")
-        total_tokens = sum(len(x) for x in output_tokens)
+        total_tokens = len(output_tokens[0])
         print(f"Tokens: {total_tokens} Time: {run_time:.2f} Tokens per second: {total_tokens/run_time:.2f}")
 
     return {
         "prompt": prompt,
-        "generated_texts": generated_texts,
-        "tokens": [len(x) for x in output_tokens],
+        "generated_text": generated_text,
+        "tokens": len(output_tokens[0]),
         "time": run_time,
-        "tokens_per_second": sum(len(x) for x in output_tokens) / run_time
+        "tokens_per_second": len(output_tokens[0]) / run_time
     }
 
 if __name__ == "__main__":
