@@ -1,116 +1,99 @@
-from fastapi import FastAPI, Form
-from pydantic import BaseModel
 import onnxruntime_genai as og
 import time
+from fastapi import FastAPI, Query, HTTPException, Form
+from typing import List, Optional
+import uvicorn
 
 app = FastAPI()
 
-class GenerateRequest(BaseModel):
-    model: str
-    input: str
-    rules: str
-    min_length: int | None = None
-    max_length: int | None = None
-    do_sample: bool | None = False
-    top_p: float | None = None
-    top_k: int | None = None
-    temperature: float | None = None
-    repetition_penalty: float | None = None
-    verbose: bool | None = True
-    timings: bool | None = True
+# Load the model when the server starts
+@app.on_event("startup")
+async def load_model():
+    global model, tokenizer
+    print("Loading model...")
+    model = og.Model('onnx-built-models/phi-3-mini-4k-instruct-onnx-cpu')  # Update the path
+    tokenizer = og.Tokenizer(model)
+    print("Model loaded and tokenizer created")
 
 @app.post("/generate/")
-async def generate(
-    model: str = Form("models/phi-3-mini-4k-instruct-onnx"),
-    input: str = Form(...),
-    rules: str = Form("you are a digital assistant"),
-    min_length: int = Form(...),
-    max_length: int = Form(2000),
-    do_sample: bool = Form(False),
-    top_p: float = Form(...),
-    top_k: int = Form(...),
-    temperature: float = Form(...),
-    repetition_penalty: float = Form(...),
-    verbose: bool = Form(True),
-    timings: bool = Form(True)
+def generate_tokens(
+    prompt: str = Form(..., description="Ask your query here", min_length=1), 
+    rules: str = Form(default="You are a digital assistant", description="Rules LLM should follow" ,min_length=1), 
+    max_length: Optional[int] = Query(None, description="Max number of tokens to generate including the prompt"),
+    min_length: Optional[int] = Query(None, description="Min number of tokens to generate including the prompt"),
+    top_p: Optional[float] = Query(None, description="Top p probability to sample with"),
+    top_k: Optional[int] = Query(None, description="Top k tokens to sample from"),
+    temperature: Optional[float] = Query(None, description="Temperature to sample with"),
+    repetition_penalty: Optional[float] = Query(None, description="Repetition penalty to sample with"),
+    do_random_sampling: Optional[bool] = Query(False, description="Do random sampling"),
+    batch_size_for_cuda_graph: Optional[int] = Query(1, description="Max batch size for CUDA graph"),
+    verbose: Optional[bool] = Query(True, description="Print verbose output and timing information")
 ):
-    if verbose:
-        print("Loading model...")
+    if verbose: print("Starting token generation process...")
 
-    if timings:
-        started_timestamp = 0
-        first_token_timestamp = 0
+    # Validate chat template
+    # if chat_template:
+    #     if chat_template.count('{') != 1 or chat_template.count('}') != 1:
+    #         raise HTTPException(status_code=400, detail="Chat template must have exactly one pair of curly braces, e.g., '<|user|>\n{input} <|end|>\n<|assistant|>'")
 
-    model_instance = og.Model(f'{model}')
-    if verbose:
-        print("Model loaded")
+    #     prompt[:] = [chat_template.format(input=text) for text in prompt]
 
-    tokenizer = og.Tokenizer(model_instance)
-    tokenizer_stream = tokenizer.create_stream()
-    
-    if verbose:
-        print("Tokenizer created")
-    
+    chat_template = f'<|system|>\n{rules}<|end>\n<|user|>\n{prompt}<|end|>\n   <|assistant|>'
+
+    # Tokenize prompt
+    input_tokens = tokenizer.encode_batch(prompt)
+    if verbose: print(f'Prompt(s) encoded: {prompt}')
+
+    # Create generator parameters
+    params = og.GeneratorParams(model)
+
+    # Set search options if available
     search_options = {
-        'do_sample': do_sample,
-        'max_length': max_length,  # Default max length to 16000
-        'min_length': min_length,
-        'top_p': top_p,
-        'top_k': top_k,
-        'temperature': temperature,
-        'repetition_penalty': repetition_penalty
+        "do_sample": do_random_sampling,
+        "max_length": max_length,
+        "min_length": min_length,
+        "top_p": top_p,
+        "top_k": top_k,
+        "temperature": temperature,
+        "repetition_penalty": repetition_penalty
     }
 
+    # Filter out None values
+    search_options = {k: v for k, v in search_options.items() if v is not None}
 
-    chat_template = '<|system|>\n{rules}<|end>\n<|user|>\n{input}<|end|>\n   <|assistant|>'
+    if verbose: print(f'Search options: {search_options}')
 
-    text = "Hello, how are you?"
-    prompt = f'{chat_template.format(input=text, rules=rules)}'
-    input_tokens = tokenizer.encode(prompt)
-
-    params = og.GeneratorParams(model_instance)
     params.set_search_options(**search_options)
+
+    # Handle batch size
+    params.try_graph_capture_with_max_batch_size(len(prompt))
+    if batch_size_for_cuda_graph:
+        params.try_graph_capture_with_max_batch_size(batch_size_for_cuda_graph)
+
     params.input_ids = input_tokens
-    generator = og.Generator(model_instance, params)
+    if verbose: print("GeneratorParams created")
+
+    # Start token generation
+    if verbose: print("Generating tokens ...\n")
+    start_time = time.time()
+    output_tokens = model.generate(params)
+    run_time = time.time() - start_time
+
+    # Decode and return output
+    generated_texts = [tokenizer.decode(output) for output in output_tokens]
 
     if verbose:
-        print("Generator created")
-        print("Running generation loop ...")
+        print(f"Generated texts: {generated_texts}")
+        total_tokens = sum(len(x) for x in output_tokens)
+        print(f"Tokens: {total_tokens} Time: {run_time:.2f} Tokens per second: {total_tokens/run_time:.2f}")
 
-    if timings:
-        first = True
-        new_tokens = []
+    return {
+        "prompt": prompt,
+        "generated_texts": generated_texts,
+        "tokens": [len(x) for x in output_tokens],
+        "time": run_time,
+        "tokens_per_second": sum(len(x) for x in output_tokens) / run_time
+    }
 
-    result = ""
-
-    try:
-        while not generator.is_done():
-            generator.compute_logits()
-            generator.generate_next_token()
-            if timings and first:
-                first_token_timestamp = time.time()
-                first = False
-
-            new_token = generator.get_next_tokens()[0]
-            result += tokenizer_stream.decode(new_token)
-
-            if timings:
-                new_tokens.append(new_token)
-    except KeyboardInterrupt:
-        print("  --control+c pressed, aborting generation--")
-
-    del generator
-
-    if timings:
-        prompt_time = first_token_timestamp - started_timestamp
-        run_time = time.time() - first_token_timestamp
-        timing_info = {
-            "prompt_length": len(input_tokens),
-            "new_tokens": len(new_tokens),
-            "time_to_first": f"{prompt_time:.2f}s",
-            "prompt_tokens_per_second": f"{len(input_tokens)/prompt_time:.2f} tps",
-            "new_tokens_per_second": f"{len(new_tokens)/run_time:.2f} tps"
-        }
-        return {"input": input, "output": result, "timing_info": timing_info}
-
-    return {"output": result}
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
