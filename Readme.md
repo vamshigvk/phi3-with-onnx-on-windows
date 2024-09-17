@@ -38,3 +38,9 @@
 
 ### build an onnx model
 - `python -m onnxruntime_genai.models.builder -m models\Phi-3-mini-4k-instruct -o onnx-models -p int4 -e cpu --extra_options int4_block_size=32 --extra_options int4_accuracy_level=4`
+
+### build onnx model for gguf models
+-  `python -m onnxruntime_genai.models.builder -m MistralForCausalLM -i hf-models/OpenHermes-2.5-Mistral-7B-GGUF/openhermes-2.5-mistral-7b.Q4_K_M.gguf -o onnx-built-models -p int4 -e cpu --extra_options int4_block_size=32 --extra_options int4_accuracy_level=4`
+
+### phi3-chat-template
+- chat_template = '<|system|>\n{rules}<|end>\n<|user|>\n{input}<|end|>\n   <|assistant|>'
