@@ -44,3 +44,7 @@
 
 ### phi3-chat-template
 - chat_template = '<|system|>\n{rules}<|end>\n<|user|>\n{input}<|end|>\n   <|assistant|>'
+
+
+### to select venv on jupyter notebook:
+- python -m ipykernel install --user --name=myenv --display-name "Python (myenv)"
