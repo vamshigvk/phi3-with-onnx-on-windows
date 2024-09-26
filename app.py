@@ -74,7 +74,7 @@ def generate_tokens(
     run_time = time.time() - start_time
 
     # Decode and return output
-    generated_text = tokenizer.decode(output_tokens[0]).
+    generated_text = tokenizer.decode(output_tokens[0])
 
     if verbose:
         total_tokens = len(output_tokens[0])
