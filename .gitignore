@@ -3,3 +3,7 @@ hf-models
 onnx-hf-models
 .ipynb_checkpoints
 __pycache__
+data
+Llama-3.1-8B-Instruct
+models
+results
