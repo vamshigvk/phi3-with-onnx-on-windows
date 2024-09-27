@@ -48,3 +48,6 @@
 
 ### to select venv on jupyter notebook:
 - python -m ipykernel install --user --name=myenv --display-name "Python (myenv)"
+
+### to run mmlu model evaluation:
+- python mmlu_evaluate.py --data_dir data # update model path in evaluate.py file
